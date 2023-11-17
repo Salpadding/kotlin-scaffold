@@ -61,3 +61,7 @@ rm -rf libs && mkdir libs
 ./build.sh run
 ```
 
+## TODO
+
+1. 构建可以直接 java -jar 运行的 jar 包
+
