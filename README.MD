@@ -1,6 +1,7 @@
 # kotlin 脚手架
 
-此脚手架的意义在于 say good bye to build.kt build.gradle pom.xml 等一系列反人类的配置文件
+此脚手架的意义在于和 build.kt build.gradle pom.xml 等一系列反人类的配置文件 构建工具说再见
+
 仅使用 zsh wget javac kotlinc 作为构建工具
 
 KISS 原则 keep it simple stupid
