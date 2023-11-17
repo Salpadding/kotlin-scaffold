@@ -17,7 +17,7 @@ KISS 原则 keep it simple stupid
 例如你需要jedis 就这样
 ```shell
 libs=(
-"jedis=https://repo1.maven.org/maven2/redis/clients/jedis/5.0.2/jedis-5.0.2.jar"
+"redis.clients jedis 5.0.2"
 )
 ```
 
@@ -25,13 +25,9 @@ libs=(
 
 ```shell
 libs=(
-"jedis=https://repo1.maven.org/maven2/redis/clients/jedis/5.0.2/jedis-5.0.2.jar",
-"commons-pool2=https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.12.0/commons-pool2-2.12.0.jar"
+"redis.clients jedis 5.0.2"
+"org.apache.commons commons-pool2 2.12.0"
 )
-```
-
-```shell
-./build.sh libs
 ```
 
 ### 下载依赖
@@ -39,6 +35,7 @@ libs=(
 ```shell
 ./build.sh libs
 ```
+
 
 ### 清空依赖
 
@@ -56,5 +53,10 @@ rm -rf libs && mkdir libs
 ```
 
 
-## 测试
+## 运行
+
+```shell
+./build.sh build
+./build.sh run
+```
 
