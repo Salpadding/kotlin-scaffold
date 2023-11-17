@@ -28,6 +28,7 @@ cur=`cd ${cur} && pwd`
 # 分别用于找运行/测试的入口函数
 MAIN_CLASS=Example
 TEST_CLASS=Test
+JAR_FILE=out/example.jar
 
 ## 从 target 目录搜索 ${1}.class 文件
 ## 例如 Example -> com.example.ExampleKt
@@ -105,9 +106,14 @@ case "${1}" in
       wget "${url}" -P "${cur}/libs"
     done
     ;;
-  # 还没有实现
   "jar")
+  JCLASS=`find_class ${MAIN_CLASS}`
+  mkdir -p target/META-INF
+  echo 'Manifest-Version: 1.0' > target/META-INF/MANIFEST.MF
+  echo 'Class-Path: .' >> target/META-INF/MANIFEST.MF
+  echo "Main-Class: ${JCLASS}" >> target/META-INF/MANIFEST.MF
 
+  jar cvfm ${JAR_FILE}  target/META-INF/MANIFEST.MF -C target .
   ;;
 ## 运行
   "run")
