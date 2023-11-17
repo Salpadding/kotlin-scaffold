@@ -1,0 +1,7 @@
+libs
+resources
+.idea
+target
+out
+*.iml
+
