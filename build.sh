@@ -73,7 +73,10 @@ build() {
 
 ## 编译 kotlin 生成 .class
 ## kotlin 一个文件可能对应多个.class 无法检查文件变动
-  KT_FILES=`find "src/kotlin" -type f | grep '.kt$' | tr '\n' ' '`
+  KT_FILES=(`find "src/kotlin" -type f | grep '.kt$' | tr '\n' ' '`)
+  if [[ "${#KT_FILES}" -eq 0 ]]; then
+    return
+  fi
   libs_cp | sed 's/^/kotlinc /' | sed "s|\$|:src/kotlin:src/java  -d target ${KT_FILES[*]}|" | "${SHELL}"
 
 }
