@@ -46,30 +46,28 @@ KOTLIN_SRC=src/kotlin
 ## 从 target 目录搜索 ${1}.class 文件
 ## 例如 Example -> com.example.ExampleKt
 find_class() {
-	find "${CLASSES}" -type f -name '*.class' | grep "${1}" |  # 过滤出 ${1}.class 
-        head -n1 | sed "s|^${CLASSES}/||" |  # 去掉文件前缀 剩下包名/类名.class
-        sed 's/.class$//' | sed 's|/|.|g' # / -> .  去掉后缀
+	find "${CLASSES}" -type f -name '*.class' | grep "${1}" | # 过滤出 ${1}.class
+		head -n1 | sed "s|^${CLASSES}/||" |                      # 去掉文件前缀 剩下包名/类名.class
+		sed 's/.class$//' | sed 's|/|.|g'                        # / -> .  去掉后缀
 }
 
 ## 生成 -cp x.jar:y.jar:z.jar 命令
 get_cp() {
-    local jars=($(find libs -type f -name '*.jar'))
+	local jars=($(find libs -type f -name '*.jar'))
 
 	if [[ ${#jars} -eq 0 ]]; then
-		echo " -cp ${CLASSES}:${RESOURCES}"
+		echo " -cp ${RESOURCES}"
 		return
 	fi
-    
-    echo "${jars[@]}" | tr ' ' ':' |
-            sed "s|\$|:${CLASSES}:${RESOURCES}|" | xargs echo -cp
-}
 
+	echo "${jars[@]}" | tr ' ' ':' |
+		sed "s|\$|:${RESOURCES}|" | xargs echo -cp
+}
 
 # 带 -cp 参数的 javac
 javac_cp() {
 	get_cp | sed "s|\$| ${*}|" | xargs javac -sourcepath "${JAVA_SRC}" -d "${CLASSES}"
 }
-
 
 build() {
 	mkdir -p "${CLASSES}"
@@ -98,23 +96,21 @@ build() {
 	if [[ "${#KT_FILES}" -eq 0 ]]; then
 		return
 	fi
-	get_cp | sed "s|\$| ${KT_FILES[*]}|" | xargs kotlinc -d "${CLASSES}"
+	get_cp | sed "s|\$|:${CLASSES} ${KT_FILES[*]}|" | xargs kotlinc -d "${CLASSES}"
 
 }
-
 
 ## 运行某个 class 的 main 函数
-## 开启断言
+## 透传 命令行参数
 run_class() {
 	build
-	get_cp | sed "s|\$| ${*}|" | xargs java -eq
+	get_cp | sed "s|\$|:${CLASSES} ${*}|" | xargs java -eq
 }
-
 
 build_jar() {
 	JCLASS=$(find_class ${MAIN_CLASS})
 	mkdir -p ${CLASSES}/META-INF
-	echo 'Manifest-Version: 1.0' > ${CLASSES}/META-INF/MANIFEST.MF
+	echo 'Manifest-Version: 1.0' >${CLASSES}/META-INF/MANIFEST.MF
 	echo 'Class-Path: .' >>${CLASSES}/META-INF/MANIFEST.MF
 	echo "Main-Class: ${JCLASS}" >>${CLASSES}/META-INF/MANIFEST.MF
 
@@ -151,13 +147,13 @@ case "${1}" in
 "run")
 	build
 	JCLASS=$(find_class ${MAIN_CLASS})
-	get_cp | sed 's/^/java /' | sed "s|$| ${JCLASS}|" | "${SHELL}"
+	run_class "${JCLASS} ${@:2}"
 	;;
 	## 测试 zsh build.sh test test2
 "test")
+	build
 	JCLASS=$(find_class ${TEST_CLASS})
-	args=$(echo "$JCLASS ${*}" | tr ' ' '\n' | sed '/^$/d' | sed '2d' | tr '\n' ' ')
-	run_class "${args}"
+	run_class "${JCLASS} ${@:2}"
 	;;
 "bootJar")
 	JCLASS=$(find_class ${MAIN_CLASS})
