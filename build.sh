@@ -89,7 +89,7 @@ build() {
 ## 运行某个 class 的 main 函数
 run_class() {
 	build
-	libs_cp | xargs echo 'java ' | sed "s|\$| ${*}|" | "${SHELL}"
+	libs_cp | xargs echo 'java -ea ' | sed "s|\$| ${*}|" | "${SHELL}"
 }
 
 build_jar() {
@@ -142,11 +142,10 @@ case "${1}" in
 	;;
 "bootJar")
 	JCLASS=$(find_class ${MAIN_CLASS})
-	echo "${JCLASS}"
 	tmp=$(mktemp -d)
 	mkdir -p "${tmp}/BOOT-INF/lib"
 	mkdir -p "${tmp}/BOOT-INF/classes"
-	unzip libs/spring-boot-loader*.jar -d "${tmp}"
+	unzip libs/spring-boot-loader*.jar -d "${tmp}" >/dev/null
 	echo "Main-Class: org.springframework.boot.loader.JarLauncher" >"${tmp}/META-INF/MANIFEST.MF"
 	echo "Start-Class: ${JCLASS}" >>"${tmp}/META-INF/MANIFEST.MF"
 
@@ -155,11 +154,9 @@ case "${1}" in
 	cp -a target/ "${tmp}/BOOT-INF/classes"
 	ls libs/*.jar | grep -v 'spring-boot-loader' | while read file; do
 		cp ${file} "${tmp}/BOOT-INF/lib/"
-		echo
 	done
 	rm -f ${JAR_FILE}
-	cat "${tmp}/META-INF/MANIFEST.MF"
-	jar cvfm0 ${JAR_FILE} ${tmp}/META-INF/MANIFEST.MF -C "${tmp}" .
+	jar cfm0 ${JAR_FILE} ${tmp}/META-INF/MANIFEST.MF -C "${tmp}" .
 	rm -r "${tmp}"
 	;;
 esac
