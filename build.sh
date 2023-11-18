@@ -67,7 +67,7 @@ get_cp() {
 
 # 带 -cp 参数的 javac
 javac_cp() {
-	get_cp | sed "s|\$| ${*}|" | xargs javac -d "${CLASSES}"
+	get_cp | sed "s|\$| ${*}|" | xargs javac -sourcepath "${JAVA_SRC}" -d "${CLASSES}"
 }
 
 
