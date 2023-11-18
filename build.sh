@@ -155,7 +155,7 @@ ls libs/*.jar | grep -v 'spring-boot-loader' | while read file; do
   cp ${file} "${tmp}/BOOT-INF/lib/"
   echo
 done
-rm ${JAR_FILE}
+rm -f ${JAR_FILE}
 cat "${tmp}/META-INF/MANIFEST.MF"
 jar cvfm0 ${JAR_FILE}  ${tmp}/META-INF/MANIFEST.MF -C "${tmp}" .
 rm -r "${tmp}"
