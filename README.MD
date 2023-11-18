@@ -67,3 +67,20 @@ rm -rf libs && mkdir libs
 ./build.sh jar
 ```
 
+## 打包单个可执行的 jar 包
+
+添加 spring-boot-loader 依赖
+
+```shell
+libs=(
+"org.jetbrains.kotlin kotlin-stdlib 1.9.20"
+"org.springframework.boot spring-boot-loader 2.7.17"
+)
+ ```
+
+打包
+
+```shell
+./build.sh bootJar
+```
+

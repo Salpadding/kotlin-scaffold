@@ -18,7 +18,7 @@ maven_jar() {
 # group artifact version 三元组 不要用逗号隔开
 libs=(
 "org.jetbrains.kotlin kotlin-stdlib 1.9.20"
-
+"org.springframework.boot spring-boot-loader 2.7.17"
 )
 
 # dirname $0 获取项目根目录
@@ -50,7 +50,7 @@ libs_cp() {
 
 # 带 -cp 参数的 javac
 javac_cp() {
-  libs_cp | sed "s|\$|:src/java -sourcepath src/java ${1}|" | xargs echo "javac -d target" | ${SHELL}
+  libs_cp | sed "s|\$|:src/java ${1}|" | xargs echo "javac -d target" | ${SHELL}
 }
 
 build() {
@@ -74,7 +74,7 @@ build() {
 ## 编译 kotlin 生成 .class
 ## kotlin 一个文件可能对应多个.class 无法检查文件变动
   KT_FILES=`find "src/kotlin" -type f | grep '.kt$' | tr '\n' ' '`
-  libs_cp | sed 's/^/kotlinc /' | sed "s|\$|:src/kotlin:src/java -include-runtime -d target ${KT_FILES[*]}|" | "${SHELL}"
+  libs_cp | sed 's/^/kotlinc /' | sed "s|\$|:src/kotlin:src/java  -d target ${KT_FILES[*]}|" | "${SHELL}"
 
 }
 
@@ -82,6 +82,16 @@ build() {
 run_class() {
   build
   libs_cp | xargs echo 'java ' | sed "s|\$| ${*}|" | "${SHELL}"
+}
+
+build_jar() {
+  JCLASS=`find_class ${MAIN_CLASS}`
+  mkdir -p target/META-INF
+  echo 'Manifest-Version: 1.0' > target/META-INF/MANIFEST.MF
+  echo 'Class-Path: .' >> target/META-INF/MANIFEST.MF
+  echo "Main-Class: ${JCLASS}" >> target/META-INF/MANIFEST.MF
+
+  jar cvfm ${JAR_FILE}  target/META-INF/MANIFEST.MF -C target .
 }
 
 case "${1}" in
@@ -100,23 +110,19 @@ case "${1}" in
     for jar in "${libs[@]}" ; do
       args=($(echo "${jar}"))
       url=`maven_jar "${args[@]}"`
-      if find ${cur}/libs -type f | grep `dirname ${url}` > /dev/null; then
+      if find ${cur}/libs -type f | grep `basename ${url}` > /dev/null; then
         continue
       fi
       wget "${url}" -P "${cur}/libs"
     done
     ;;
   "jar")
-  JCLASS=`find_class ${MAIN_CLASS}`
-  mkdir -p target/META-INF
-  echo 'Manifest-Version: 1.0' > target/META-INF/MANIFEST.MF
-  echo 'Class-Path: .' >> target/META-INF/MANIFEST.MF
-  echo "Main-Class: ${JCLASS}" >> target/META-INF/MANIFEST.MF
-
-  jar cvfm ${JAR_FILE}  target/META-INF/MANIFEST.MF -C target .
+  build
+  build_jar
   ;;
 ## 运行
   "run")
+  build
   JCLASS=`find_class ${MAIN_CLASS}`
   libs_cp | sed 's/^/java /' | sed "s|$| ${JCLASS}|" | "${SHELL}"
   ;;
@@ -125,5 +131,27 @@ case "${1}" in
   JCLASS=`find_class ${TEST_CLASS}`
   args=$(echo "$JCLASS ${*}" | tr ' ' '\n' | sed '/^$/d' | sed '2d' | tr '\n' ' ')
   run_class "${args}"
+  ;;
+  "bootJar")
+JCLASS=`find_class ${MAIN_CLASS}`
+echo "${JCLASS}"
+tmp=`mktemp -d`
+mkdir -p "${tmp}/BOOT-INF/lib"
+mkdir -p "${tmp}/BOOT-INF/classes"
+unzip libs/spring-boot-loader*.jar -d "${tmp}"
+echo "Main-Class: org.springframework.boot.loader.JarLauncher" > "${tmp}/META-INF/MANIFEST.MF"
+echo "Start-Class: ${JCLASS}" >> "${tmp}/META-INF/MANIFEST.MF"
+
+build
+
+cp -a target/ "${tmp}/BOOT-INF/classes"
+ls libs/*.jar | grep -v 'spring-boot-loader' | while read file; do
+  cp ${file} "${tmp}/BOOT-INF/lib/"
+  echo
+done
+rm ${JAR_FILE}
+cat "${tmp}/META-INF/MANIFEST.MF"
+jar cvfm0 ${JAR_FILE}  ${tmp}/META-INF/MANIFEST.MF -C "${tmp}" .
+rm -r "${tmp}"
   ;;
 esac
