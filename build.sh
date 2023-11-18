@@ -17,7 +17,9 @@ maven_jar() {
 # 声明依赖
 # group artifact version 三元组 不要用逗号隔开
 libs=(
-"org.jetbrains.kotlin kotlin-stdlib 1.9.20"
+"org.apache.commons commons-pool2 2.12.0"
+"redis.clients jedis 5.0.2"
+"org.slf4j slf4j-api 2.0.9"
 "org.springframework.boot spring-boot-loader 2.7.17"
 )
 
@@ -26,8 +28,8 @@ cur=`dirname ${0}`
 cur=`cd ${cur} && pwd`
 
 # 分别用于找运行/测试的入口函数
-MAIN_CLASS=Example
-TEST_CLASS=Test
+MAIN_CLASS=${MAIN_CLASS:-Example}
+TEST_CLASS=${TEST_CLASS:-Test}
 JAR_FILE=out/example.jar
 
 ## 从 target 目录搜索 ${1}.class 文件
