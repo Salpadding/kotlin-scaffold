@@ -104,7 +104,7 @@ build() {
 ## 透传 命令行参数
 run_class() {
 	build
-	get_cp | sed "s|\$|:${CLASSES} ${*}|" | xargs java -eq
+	get_cp | sed "s|\$|:${CLASSES} ${*}|" | xargs java -ea 
 }
 
 build_jar() {
