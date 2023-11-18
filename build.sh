@@ -6,8 +6,8 @@
 # 依赖库
 # libs/jedis-5.0.2.jar
 
-# maven_jar group artifact version
-maven_jar() {
+# maven_jar_name group artifact version
+maven_jar_name() {
 	local group=$(echo "${1}" | tr '.' '/')
 	local art=${2}
 	local ver=${3}
@@ -30,38 +30,54 @@ cur=$(cd ${cur} && pwd)
 # 分别用于找运行/测试的入口函数
 MAIN_CLASS=${MAIN_CLASS:-Example}
 TEST_CLASS=${TEST_CLASS:-Test}
+
+# 输出 .jar 文件
 JAR_FILE=out/example.jar
+
+# .class 文件输出目录
+CLASSES=target
+
+# 资源文件目录 可以被 ClassLoader 找到
+RESOURCES=resources
+
+JAVA_SRC=src/java
+KOTLIN_SRC=src/kotlin
 
 ## 从 target 目录搜索 ${1}.class 文件
 ## 例如 Example -> com.example.ExampleKt
 find_class() {
-	find target -type f | grep "${1}" | head -n1 | sed 's|^target/||' | sed 's/.class$//' | sed 's|/|.|g'
+	find "${CLASSES}" -type f -name '*.class' | grep "${1}" |  # 过滤出 ${1}.class 
+        head -n1 | sed "s|^${CLASSES}/||" |  # 去掉文件前缀 剩下包名/类名.class
+        sed 's/.class$//' | sed 's|/|.|g' # / -> .  去掉后缀
 }
 
 ## 生成 -cp x.jar:y.jar:z.jar 命令
-libs_cp() {
-	local n=$(ls "libs" | grep '.jar$' | wc -l)
+get_cp() {
+    local jars=($(find libs -type f -name '*.jar'))
 
-	if [[ ${n} -eq 0 ]]; then
-		echo " -cp target:resources"
+	if [[ ${#jars} -eq 0 ]]; then
+		echo " -cp ${CLASSES}:${RESOURCES}"
 		return
 	fi
-
-	find "libs" -type f | grep '.jar$' | tr '\n' ':' | sed 's/:$/:target:resources/' | xargs echo ' -cp '
+    
+    echo "${jars[@]}" | tr ' ' ':' |
+            sed "s|\$|:${CLASSES}:${RESOURCES}|" | xargs echo -cp
 }
+
 
 # 带 -cp 参数的 javac
 javac_cp() {
-	libs_cp | sed "s|\$|:src/java ${1}|" | xargs echo "javac -d target" | ${SHELL}
+	get_cp | sed "s|\$| ${*}|" | xargs javac -d "${CLASSES}"
 }
 
+
 build() {
-	mkdir -p target
+	mkdir -p "${CLASSES}"
 
 	## 编译java
-	find "src/java" -type f | grep '.java$' | while read file; do
+	find "${JAVA_SRC}" -type f -name '*.java' | while read file; do
 		## java 是一个文件生成一个 class 可以检查文件是否变动
-		dst=$(echo "${file}" | sed "s|^src/java|target|" | sed 's/.java$/.class/')
+		dst=$(echo "${file}" | sed "s|^${JAVA_SRC}|${CLASSES}|" | sed 's/.java$/.class/')
 
 		if ! [[ -f "${dst}" ]]; then
 			javac_cp "${file}"
@@ -75,37 +91,40 @@ build() {
 
 	## 编译 kotlin 生成 .class
 	## kotlin 一个文件可能对应多个.class 无法检查文件变动
-	if ! [[ -d src/kotlin ]]; then
+	if ! [[ -d "${KOTLIN_SRC}" ]]; then
 		return
 	fi
-	KT_FILES=($(find "src/kotlin" -type f | grep '.kt$' | tr '\n' ' '))
+	KT_FILES=($(find "${KOTLIN_SRC}" -type f -name '*.kt'))
 	if [[ "${#KT_FILES}" -eq 0 ]]; then
 		return
 	fi
-	libs_cp | sed 's/^/kotlinc /' | sed "s|\$|:src/kotlin:src/java  -d target ${KT_FILES[*]}|" | "${SHELL}"
+	get_cp | sed "s|\$| ${KT_FILES[*]}|" | xargs kotlinc -d "${CLASSES}"
 
 }
+
 
 ## 运行某个 class 的 main 函数
+## 开启断言
 run_class() {
 	build
-	libs_cp | xargs echo 'java -ea ' | sed "s|\$| ${*}|" | "${SHELL}"
+	get_cp | sed "s|\$| ${*}|" | xargs java -eq
 }
+
 
 build_jar() {
 	JCLASS=$(find_class ${MAIN_CLASS})
-	mkdir -p target/META-INF
-	echo 'Manifest-Version: 1.0' >target/META-INF/MANIFEST.MF
-	echo 'Class-Path: .' >>target/META-INF/MANIFEST.MF
-	echo "Main-Class: ${JCLASS}" >>target/META-INF/MANIFEST.MF
+	mkdir -p ${CLASSES}/META-INF
+	echo 'Manifest-Version: 1.0' > ${CLASSES}/META-INF/MANIFEST.MF
+	echo 'Class-Path: .' >>${CLASSES}/META-INF/MANIFEST.MF
+	echo "Main-Class: ${JCLASS}" >>${CLASSES}/META-INF/MANIFEST.MF
 
-	jar cvfm ${JAR_FILE} target/META-INF/MANIFEST.MF -C target .
+	jar cfm ${JAR_FILE} ${CLASSES}/META-INF/MANIFEST.MF -C ${CLASSES} .
 }
 
 case "${1}" in
 # mvn clean
 "clean")
-	rm -rf target
+	rm -rf ${CLASSES}
 	;;
 # mvn compile
 "build")
@@ -117,7 +136,7 @@ case "${1}" in
 	mkdir -p libs
 	for jar in "${libs[@]}"; do
 		args=($(echo "${jar}"))
-		url=$(maven_jar "${args[@]}")
+		url=$(maven_jar_name "${args[@]}")
 		if find ${cur}/libs -type f | grep $(basename ${url}) >/dev/null; then
 			continue
 		fi
@@ -132,7 +151,7 @@ case "${1}" in
 "run")
 	build
 	JCLASS=$(find_class ${MAIN_CLASS})
-	libs_cp | sed 's/^/java /' | sed "s|$| ${JCLASS}|" | "${SHELL}"
+	get_cp | sed 's/^/java /' | sed "s|$| ${JCLASS}|" | "${SHELL}"
 	;;
 	## 测试 zsh build.sh test test2
 "test")
@@ -151,10 +170,12 @@ case "${1}" in
 
 	build
 
-	cp -a target/ "${tmp}/BOOT-INF/classes"
+	cp -a ${CLASSES}/ "${tmp}/BOOT-INF/classes/"
+	cp -a ${RESOURCES}/ "${tmp}/BOOT-INF/classes/"
 	ls libs/*.jar | grep -v 'spring-boot-loader' | while read file; do
 		cp ${file} "${tmp}/BOOT-INF/lib/"
 	done
+
 	rm -f ${JAR_FILE}
 	jar cfm0 ${JAR_FILE} ${tmp}/META-INF/MANIFEST.MF -C "${tmp}" .
 	rm -r "${tmp}"
