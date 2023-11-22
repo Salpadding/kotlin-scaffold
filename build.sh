@@ -1,26 +1,42 @@
+#!/bin/bash
+
 # 项目结构
 # 源代码
 # src/com/example/Main.java
 # 编译输出
 # target/com/example/Main.class
 # 依赖库
-# libs/jedis-5.0.2.jar
+# lib/jedis-5.0.2.jar
 
-# maven_jar_name group artifact version
-maven_jar_name() {
+MAVEN_REPO=${MAVEN_REPO:-https://repo1.maven.org/maven2}
+SPRING_VER=${SPRING_VER:-'5.3.0'}
+
+maven_jar_path() {
 	local group=$(echo "${1}" | tr '.' '/')
 	local art=${2}
 	local ver=${3}
-	echo "https://repo1.maven.org/maven2/${group}/${art}/${ver}/${art}-${ver}.jar"
+	echo "${group}/${art}/${ver}/${art}-${ver}.jar"
 }
 
 # 声明依赖
 # group artifact version 三元组 不要用逗号隔开
-libs=(
+lib=(
 	"org.apache.commons commons-pool2 2.12.0"
 	"redis.clients jedis 5.0.2"
 	"org.slf4j slf4j-api 2.0.9"
 	"org.springframework.boot spring-boot-loader 2.7.17"
+	"org.springframework spring-jcl ${SPRING_VER}"
+	"org.springframework spring-web ${SPRING_VER}"
+	"org.springframework spring-webmvc ${SPRING_VER}"
+	"org.springframework spring-core ${SPRING_VER}"
+	"org.springframework spring-beans ${SPRING_VER}"
+	"org.springframework spring-context ${SPRING_VER}"
+	"org.springframework spring-aop ${SPRING_VER}"
+	"org.springframework spring-expression ${SPRING_VER}"
+	"com.fasterxml.jackson.core jackson-databind 2.16.0"
+	"com.fasterxml.jackson.core jackson-core 2.16.0"
+	"com.fasterxml.jackson.core jackson-annotations 2.16.0"
+	"javax.servlet javax.servlet-api 3.1.0"
 )
 
 # dirname $0 获取项目根目录
@@ -35,12 +51,12 @@ TEST_CLASS=${TEST_CLASS:-Test}
 JAR_FILE=out/example.jar
 
 # .class 文件输出目录
-CLASSES=target
+CLASSES=target/classes
 
 # 资源文件目录 可以被 ClassLoader 找到
-RESOURCES=resources
+RESOURCES=src/main/resources
 
-JAVA_SRC=src/java
+JAVA_SRC=src/main/java
 KOTLIN_SRC=src/kotlin
 
 ## 从 target 目录搜索 ${1}.class 文件
@@ -51,31 +67,38 @@ find_class() {
 		sed 's/.class$//' | sed 's|/|.|g'                        # / -> .  去掉后缀
 }
 
-## 生成 -cp x.jar:y.jar:z.jar 命令
+## 生成 classpath 例如 x.jar:y.jar:z.jar
 get_cp() {
-	local jars=($(find libs -type f -name '*.jar'))
+	local jars=($(find lib -type f -name '*.jar'))
 
 	if [[ ${#jars} -eq 0 ]]; then
-		echo " -cp ${RESOURCES}"
+		echo "${RESOURCES}"
 		return
 	fi
 
 	echo "${jars[@]}" | tr ' ' ':' |
-		sed "s|\$|:${RESOURCES}|" | xargs echo -cp
+		sed "s|\$|:${RESOURCES}|"
 }
 
 # 带 -cp 参数的 javac
 javac_cp() {
-	get_cp | sed "s|\$| ${*}|" | xargs javac -sourcepath "${JAVA_SRC}" -d "${CLASSES}"
+	local cp=$(get_cp)
+	javac -cp "${cp}" -sourcepath "${JAVA_SRC}" -d "${CLASSES}" "${@}"
 }
 
 build() {
+	local cp=$(get_cp)
+
+	local SRC="${1}"
+	SRC=$([[ -n ${SRC} ]] && echo "${SRC}" || echo "${JAVA_SRC}")
+	[[ -d "${SRC}" ]] || return
+
 	mkdir -p "${CLASSES}"
 
 	## 编译java
-	find "${JAVA_SRC}" -type f -name '*.java' | while read file; do
+	find "${SRC}" -type f -name '*.java' | while read file; do
 		## java 是一个文件生成一个 class 可以检查文件是否变动
-		dst=$(echo "${file}" | sed "s|^${JAVA_SRC}|${CLASSES}|" | sed 's/.java$/.class/')
+		dst=$(echo "${file}" | sed "s|^${SRC}|${CLASSES}|" | sed 's/.java$/.class/')
 
 		if ! [[ -f "${dst}" ]]; then
 			javac_cp "${file}"
@@ -87,24 +110,26 @@ build() {
 		fi
 	done
 
-	## 编译 kotlin 生成 .class
-	## kotlin 一个文件可能对应多个.class 无法检查文件变动
-	if ! [[ -d "${KOTLIN_SRC}" ]]; then
-		return
-	fi
-	KT_FILES=($(find "${KOTLIN_SRC}" -type f -name '*.kt'))
+	KT_FILES=($(find "${SRC}" -type f -name '*.kt'))
 	if [[ "${#KT_FILES}" -eq 0 ]]; then
 		return
 	fi
-	get_cp | sed "s|\$|:${CLASSES} ${KT_FILES[*]}|" | xargs kotlinc -d "${CLASSES}"
+	kotlinc -cp "${cp}:${CLASSES}" -d "${CLASSES}" "${KT_FILES[@]}"
+}
 
+build_main() {
+	build src/main/java
+}
+
+build_test() {
+	build src/test/java
 }
 
 ## 运行某个 class 的 main 函数
 ## 透传 命令行参数
 run_class() {
-	build
-	get_cp | sed "s|\$|:${CLASSES} ${*}|" | xargs java -ea 
+	local cp=$(get_cp)
+	java -ea -cp "${cp}:${CLASSES}" "${@}"
 }
 
 build_jar() {
@@ -127,40 +152,58 @@ case "${1}" in
 	build
 	;;
 # 下载依赖包
-"libs")
+"lib")
 	## 下载依赖的 jar
-	mkdir -p libs
-	for jar in "${libs[@]}"; do
+	mkdir -p lib
+	for jar in "${lib[@]}"; do
 		args=($(echo "${jar}"))
-		url=$(maven_jar_name "${args[@]}")
-		if find ${cur}/libs -type f | grep $(basename ${url}) >/dev/null; then
+		jar_path=$(maven_jar_path "${args[@]}")
+		jar_name=$(basename ${jar_path})
+		if find ${cur}/lib -type f | grep ${jar_name} >/dev/null; then
 			continue
 		fi
-		wget "${url}" -P "${cur}/libs"
+
+		if [[ -f "${HOME}/.m2/repository/${jar_path}" ]]; then
+			cp "${HOME}/.m2/repository/${jar_path}" "${cur}/lib"
+			continue
+		fi
+
+		wget "${MAVEN_REPO}/${jar_path}" -P "${cur}/lib"
+
+		[[ -f "${cur}/lib/${jar_name}" ]] && [[ -d "${HOME}/.m2" ]] &&
+			mkdir -p "${HOME}/.m2/repository/$(dirname ${jar_path})" &&
+			cp "${cur}/lib/${jar_name}" "${HOME}/.m2/repository/${jar_path}"
 	done
 	;;
 "jar")
-	build
+	build_main
 	build_jar
 	;;
 	## 运行
 "run")
-	build
+	build_main
 	JCLASS=$(find_class ${MAIN_CLASS})
-	run_class "${JCLASS} ${@:2}"
+	run_class "${JCLASS}" "${@:2}"
 	;;
 	## 测试 zsh build.sh test test2
 "test")
-	build
+	build_main
+	build_test
 	JCLASS=$(find_class ${TEST_CLASS})
-	run_class "${JCLASS} ${@:2}"
+	run_class "${JCLASS}" "${@:2}"
+	;;
+"native-image")
+	## apt install libz-dev
+	build
+	JCLASS=$(find_class ${MAIN_CLASS})
+	get_cp | sed "s|\$|:${CLASSES} ${JCLASS}|" | xargs native-image
 	;;
 "bootJar")
 	JCLASS=$(find_class ${MAIN_CLASS})
 	tmp=$(mktemp -d)
 	mkdir -p "${tmp}/BOOT-INF/lib"
 	mkdir -p "${tmp}/BOOT-INF/classes"
-	unzip libs/spring-boot-loader*.jar -d "${tmp}" >/dev/null
+	unzip lib/spring-boot-loader*.jar -d "${tmp}" >/dev/null
 	echo "Main-Class: org.springframework.boot.loader.JarLauncher" >"${tmp}/META-INF/MANIFEST.MF"
 	echo "Start-Class: ${JCLASS}" >>"${tmp}/META-INF/MANIFEST.MF"
 
@@ -168,7 +211,7 @@ case "${1}" in
 
 	cp -a ${CLASSES}/ "${tmp}/BOOT-INF/classes/"
 	cp -a ${RESOURCES}/ "${tmp}/BOOT-INF/classes/"
-	ls libs/*.jar | grep -v 'spring-boot-loader' | while read file; do
+	ls lib/*.jar | grep -v 'spring-boot-loader' | while read file; do
 		cp ${file} "${tmp}/BOOT-INF/lib/"
 	done
 
